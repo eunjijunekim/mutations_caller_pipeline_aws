@@ -49,27 +49,27 @@ class GatkCaller
 
   # Preparation realignement
 
-  def self.prepare_realigne(log_dir, gatk, read_bam, index_fa, target_intervals, job_prefix, account, dbsnp_file, debug)
+  def self.prepare_realigne(log_dir, gatk, read_bam, index_fa, target_intervals, job_prefix, account, dbsnp_file, debug, star)
     cmd = "qsub -pe DJ 4 -o #{log_dir} -e #{log_dir}_prep_realign_errors -V -cwd -b y -N prep_realignment_#{job_prefix} -l h_vmem=6G -hold_jid index_#{job_prefix} #{account}\
       java -Xmx6g -jar #{gatk} -nt 4 \
       -I #{read_bam} --known #{dbsnp_file} \
       -R #{index_fa} \
       -T RealignerTargetCreator \
-      -o #{target_intervals}"
+      -o #{target_intervals} #{star}"
     puts cmd
     system(cmd) if debug == 1
   end
 
   # Realignment
   # parallel not possible yet (1.6-13-g91f02df)
-  def self.realigne(log_dir, gatk, read_bam, index_fa, target_intervals, realigned_bam, job_prefix, account, debug)
+  def self.realigne(log_dir, gatk, read_bam, index_fa, target_intervals, realigned_bam, job_prefix, account, debug, star)
     cmd = "qsub -o #{log_dir} -e #{log_dir}_realign_errors -V -cwd -b y -N realignment_#{job_prefix} -l h_vmem=14G -hold_jid prep_realignment_#{job_prefix} #{account} \
       java -Xmx6g -jar #{gatk} \
       -I #{read_bam} \
       -R #{index_fa} \
       -T IndelRealigner \
       -targetIntervals #{target_intervals} \
-      -o #{realigned_bam}"
+      -o #{realigned_bam} #{star}"
     puts cmd
     system(cmd) if debug == 1
   end

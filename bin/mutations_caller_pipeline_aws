@@ -60,7 +60,8 @@ options = { :mutant_r1 => nil,
             :debug => 1,
             :cluster => false,
             :coverage => false,
-            :samplesheet => nil
+            :samplesheet => nil,
+            :star => ""
           }
 
 optparse = OptionParser.new do |opts|
@@ -122,6 +123,9 @@ optparse = OptionParser.new do |opts|
     options[:sample_name] = i
   end
 
+  opts.on("-r", "--star", String, "Reassign Mapping Quality for STAR alignment") do |i|
+    options[:star] = "-rf ReassignMappingQuality" if i 
+  end
 
   opts.on_tail("-h", "--help", "Show this message") do
     puts opts
@@ -291,7 +295,7 @@ GatkCaller.prepare_realigne(log_file,
                             job_prefix,
                             options[:account],
                             options[:dbsnp_file],
-                            options[:debug])
+                            options[:debug],options[:star])
 
 
 GatkCaller.realigne(log_file,
@@ -302,7 +306,7 @@ GatkCaller.realigne(log_file,
                     realigned_bam,
                     job_prefix,
                     options[:account],
-                    options[:debug])
+                    options[:debug],options[:star])
 
 # Recalibration
 GatkCaller.recalibrate_bam( log_file,
