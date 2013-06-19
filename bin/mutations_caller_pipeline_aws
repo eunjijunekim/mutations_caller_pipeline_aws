@@ -124,7 +124,7 @@ optparse = OptionParser.new do |opts|
   end
 
   opts.on("-r", "--star", String, "Reassign Mapping Quality for STAR alignment") do |i|
-    options[:star] = "-rf ReassignMappingQuality" if i 
+    options[:star] = "-rf ReassignMappingQuality" 
   end
 
   opts.on_tail("-h", "--help", "Show this message") do
@@ -162,9 +162,9 @@ sample_name = options[:sample_name]
 
 # get information from sample sheet
 FasterCSV.foreach(options[:samplesheet],:headers => :first_row) do |row|
-  puts options[:sample_name]
+  #puts options[:sample_name]
   #puts row.join(":")
-  puts row["SampleID"]
+  #puts row["SampleID"]
   if options[:sample_name] == row["SampleID"]
     options[:index] = row["Index"]
     lane = row["Lane"]
