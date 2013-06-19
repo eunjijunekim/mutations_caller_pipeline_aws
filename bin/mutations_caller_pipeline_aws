@@ -3,7 +3,7 @@ require 'mutations_caller_pipeline_aws'
 require 'optparse'
 require 'rubygems'
 require 'yaml'
-require 'csv'
+require 'fastercsv'
 =begin
   * Name: Mutations Caller Pipeline (AWS)
   * Pipeline combining bwa with GATK2
@@ -57,7 +57,7 @@ options = { :mutant_r1 => nil,
             :vcf => nil,
             :account => "",
             :project => "",
-            :debug => 1,
+            #:debug => 1,
             :cluster => false,
             :coverage => false,
             :samplesheet => nil,
@@ -99,9 +99,9 @@ optparse = OptionParser.new do |opts|
     options[:project] = " -P #{i}" if i
   end
 
-  opts.on("-d","--debug ", "Option to debug" ) do |i|
-    options[:debug] =  5 if i
-  end
+  #opts.on("-d","--debug ", "Option to debug" ) do |i|
+  #  options[:debug] =  5 if i
+  #end
 
   opts.on("-k","--cluster ", "On compute cluster (none AWS)" ) do |i|
     options[:cluster] =  true if i
@@ -156,61 +156,16 @@ def execute(cmd)
   raise cmd unless status
 end
 
-def run(options)
-  # tmp files for output
-  job_number = options[:job_number]
-  bam_file = "aligned_#{job_number}.bam"
-  bam_file_sorted = "sorted_#{job_number}.bam"
-  bam_file_sorted_duplicates = options[:step_one_bam_file]
-  duplicate_metrcis = "GATK_files/duplicates.metrics"
-  job_prefix = "#{job_number}"
-  log_file = "log/#{options[:sample_name]}.log"
-
-  cmd = PicardCaller.convert(options[:sam_file], bam_file, options[:picard_tools],
-    log_file, job_prefix, options[:account])
-
-  if options[:debug] == 1
-    execute(cmd)
-  else
-    puts cmd
-  end
-
-  cmd = PicardCaller.rg_and_sorting(bam_file, bam_file_sorted, options[:picard_tools],
-    options[:library], options[:index], options[:sample_name],
-    log_file, options[:id], job_prefix, options[:account])
-
-  if options[:debug] == 1
-    execute(cmd)
-  else
-    puts cmd
-  end
-
-  cmd = PicardCaller.mark_duplicates(bam_file_sorted, bam_file_sorted_duplicates,
-    duplicate_metrcis, options[:picard_tools], log_file, job_prefix,
-    options[:account])
-
-  if options[:debug] == 1
-    execute(cmd)
-  else
-    puts cmd
-  end
-
-  cmd = PicardCaller.build_index(bam_file_sorted_duplicates,
-    options[:picard_tools], log_file, job_prefix, options[:account])
-
-  if options[:debug] == 1
-    execute(cmd)
-  else
-    puts cmd
-  end
-end
-
+sample_name = options[:sample_name]
 
 # pipeline starts here
 
 # get information from sample sheet
-CSV.foreach(options[:samplesheet],{:headers => :first_row}) do |row|
-  if sample_name = row["SampleID"]
+FasterCSV.foreach(options[:samplesheet],:headers => :first_row) do |row|
+  puts options[:sample_name]
+  #puts row.join(":")
+  puts row["SampleID"]
+  if options[:sample_name] == row["SampleID"]
     options[:index] = row["Index"]
     lane = row["Lane"]
     sample_project = row["SampleProject"]
@@ -239,31 +194,44 @@ recal_bam = "#{sample_name}.bam"
 sai_file_fwd = "#{random}_fwd.sai"
 sai_file_rev = "#{random}_rev.sai"
 
+# tmp files for output (picard)
+job_number = options[:job_number]
+duplicate_metrics = "GATK_files/duplicate_metrics"
+bam_file_picard = "aligned_#{job_number}.bam"
+bam_file_sorted = "sorted_#{job_number}.bam"
+bam_file_sorted_duplicates = options[:step_one_bam_file]
+#job_prefix_picard = "#{job_number}"
+#log_file = "log/#{options[:sample_name]}.log"
+
 options[:account] = options[:project] if options[:account].empty?
 #options[:gatk] = "java -Xmx8g -jar #{options[:gatk]}"
 
+
 # BWA : ALN
-BwaCaller.call_aln(options[:mutant_r1],
+cmd = BwaCaller.call_aln(options[:mutant_r1],
                    options[:bwa_prefix],
                    sai_file_fwd,
                    log_file,
                    options[:bwa],
                    job_prefix,
                    options[:account],
-                   options[:debug],"fwd")
+                   #options[:debug],
+                   "fwd")
+puts cmd
 
-BwaCaller.call_aln(options[:mutant_r2],
+cmd = BwaCaller.call_aln(options[:mutant_r2],
                    options[:bwa_prefix],
                    sai_file_rev,
                    log_file,
                    options[:bwa],
                    job_prefix,
                    options[:account],
-                   options[:debug],"rev")
-
+                   #options[:debug],
+                   "rev")
+puts cmd
 
 # BWA : First step mapping reads to reference
-BwaCaller.call_paired_end(options[:mutant_r1],
+cmd = BwaCaller.call_paired_end(options[:mutant_r1],
                           options[:mutant_r2],
                           sai_file_fwd,
                           sai_file_rev,
@@ -273,21 +241,52 @@ BwaCaller.call_paired_end(options[:mutant_r1],
                           options[:bwa],
                           options[:samtools],
                           job_prefix,
-                          options[:account],
-                          options[:debug])
+                          options[:account])
+                          #options[:debug])
+puts cmd
 
+# Picard : Sam format converter
+cmd = PicardCaller.convert(options[:sam_file],
+                            bam_file_picard,
+                            options[:picard_tools],
+                            log_file,
+                            job_prefix,
+                            options[:account])
+puts cmd
 
-# Indexing + Marking Duplicates
-run(options)
-#bam_file = bam_file + ".bam"
-#SamtoolsIndexing.call(bam_file,
-#                      job_prefix,
-#                      options[:account],
-#                      options[:debug],
-#                      log_file)
+# Picard : 
+cmd = PicardCaller.rg_and_sorting(bam_file_picard,
+                            bam_file_sorted,
+                            options[:picard_tools],
+                            options[:library],
+                            options[:index],
+                            options[:sample_name],
+                            log_file,
+                            options[:id],
+                            job_prefix,
+                            options[:account])
+puts cmd
+
+# Picard : Mark duplicates
+cmd = PicardCaller.mark_duplicates(bam_file_sorted,
+                            bam_file_sorted_duplicates,
+                            duplicate_metrics,
+                            options[:picard_tools],
+                            log_file,
+                            job_prefix,
+                            options[:account])
+puts cmd
+
+# Picard : Build index
+cmd = PicardCaller.build_index(bam_file_sorted_duplicates,
+                            options[:picard_tools],
+                            log_file,
+                            job_prefix,
+                            options[:account])
+puts cmd
 
 # Realigne
-GatkCaller.prepare_realigne(log_file,
+cmd = GatkCaller.prepare_realigne(log_file,
                             options[:gatk],
                             options[:step_one_bam_file],
                             options[:index_fa],
@@ -295,10 +294,11 @@ GatkCaller.prepare_realigne(log_file,
                             job_prefix,
                             options[:account],
                             options[:dbsnp_file],
-                            options[:debug],options[:star])
+                            #options[:debug],
+                            options[:star])
+puts cmd
 
-
-GatkCaller.realigne(log_file,
+cmd = GatkCaller.realigne(log_file,
                     options[:gatk],
                     options[:step_one_bam_file],
                     options[:index_fa],
@@ -306,40 +306,44 @@ GatkCaller.realigne(log_file,
                     realigned_bam,
                     job_prefix,
                     options[:account],
-                    options[:debug],options[:star])
+                    #options[:debug],
+                    options[:star])
+puts cmd
 
 # Recalibration
-GatkCaller.recalibrate_bam( log_file,
+cmd = GatkCaller.recalibrate_bam( log_file,
                             options[:gatk],
                             options[:index_fa],
                             realigned_bam,
                             recal_file,
                             job_prefix,
                             options[:account],
-                            options[:dbsnp_file],
-                            options[:debug] )
+                            options[:dbsnp_file])
+                            #options[:debug] )
+puts cmd
 
-GatkCaller.table_calibration(log_file,
+cmd = GatkCaller.table_calibration(log_file,
                              options[:gatk],
                              options[:index_fa],
                              realigned_bam,
                              recal_bam,
                              recal_file,
                              job_prefix,
-                             options[:account],
-                             options[:debug])
+                             options[:account])
+                             #options[:debug])
+puts cmd
 
 # GATK: finding mutations
-GatkCaller.call(log_file,
+cmd = GatkCaller.call(log_file,
                 options[:gatk],
                 options[:index_fa],
                 recal_bam,
                 options[:vcf],
                 job_prefix,
                 options[:account],
-                options[:dbsnp_file],
-                options[:debug])
-
+                options[:dbsnp_file])
+                #options[:debug])
+puts cmd
 
 # GATK : coverage
 if options[:coverage]
@@ -351,6 +355,6 @@ if options[:coverage]
     recal_bam,
     outfile_prefix,
     job_prefix,
-    options[:account],
-    options[:debug])
+    options[:account])
+    #options[:debug])
 end
